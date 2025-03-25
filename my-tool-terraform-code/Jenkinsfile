@@ -1,51 +1,85 @@
 pipeline {
     agent any
-    
-    tools {
-        // Terraform plugin installation
-        terraform 'terraform'
-    }
-    parameters {
-        choice(
-            choices: ['Create Infra', 'Destroy Infra'], 
-            description: 'Select whether to create or destroy the infrastructure:',
-            name: 'ACTION'
-        )
-    }
     environment {
-        AWS_ACCESS_KEY_ID     = credentials('aws_access_key_id')
-        AWS_SECRET_ACCESS_KEY = credentials('aws_secret_access_key')
+        AWS_REGION = 'us-east-2'
     }
     stages {
-        stage('Terraform init') {
-            steps {
-                sh 'terraform init'
-            }
-        }
-        stage('Terraform plan') {
-            steps {
-                sh 'terraform plan'
-            }
-        }
-        // stage to apply OR destroy infra
-        stage('Proceed with Terraform action') {
-            input {
-                message "Do you want to ${params.ACTION == 'Create Infra' ? 'apply' : 'Destroy Infra'} ?"
-                ok "Yes"
-            }
+        stage('Checkout Repository') {
             steps {
                 script {
-                    def action = params.ACTION
-                    switch (action) {
-                        case 'Create Infra':
-                            sh 'terraform apply --auto-approve'
-                            break
-                        case 'Destroy Infra':
-                            sh 'terraform destroy --auto-approve'
-                            break
+                    // Ensure the correct repository and branch are used
+                    git branch: 'main', url: 'https://github.com/AnnemAnitha7989/EStool_Teraform.git'
+                }
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', 
+                                                       usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                                                       passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        // Change to the my-tool-terraform-code directory where Terraform files are located
+                        dir('my-tool-terraform-code') {
+                            sh 'terraform init'
+                        }
                     }
                 }
             }
         }
+
+        stage('Terraform Plan') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', 
+                                                       usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                                                       passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        // Run terraform plan in the my-tool-terraform-code directory
+                        dir('my-tool-terraform-code') {
+                            sh 'terraform plan'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', 
+                                                       usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                                                       passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        // Run terraform apply in the my-tool-terraform-code directory
+                        dir('my-tool-terraform-code') {
+                            sh 'terraform apply -auto-approve'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Terraform Destroy') {
+            when {
+                expression {
+                    return params.DESTROY == true  // Add the condition for destroying resources
+                }
+            }
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'aws-credentials', 
+                                                       usernameVariable: 'AWS_ACCESS_KEY_ID', 
+                                                       passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        // Run terraform destroy in the my-tool-terraform-code directory
+                        dir('my-tool-terraform-code') {
+                            sh 'terraform destroy -auto-approve'
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    parameters {
+        booleanParam(name: 'DESTROY', defaultValue: false, description: 'Set to true to destroy infrastructure')
     }
 }
